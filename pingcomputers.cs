@@ -7,42 +7,57 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Threading;
 using System.Net.NetworkInformation;
-//using Altiris.NS.Logging;
-//using Altiris.NS.Scoping;
-//using Altiris.NS.Security;
-//using Altiris.NS.StandardItems.Collection.Scoping;
-//using Altiris.NS.ResourceManagement;
-//using Symantec.CWoC.APIWrappers;
+using Altiris.NS.Logging;
+using Altiris.NS.Scoping;
+using Altiris.NS.Security;
+using Altiris.NS.StandardItems.Collection.Scoping;
+using Altiris.NS.ResourceManagement;
+using Symantec.CWoC.APIWrappers;
 
 namespace Symantec.CWoC {
     class PingComputers {
+	
+		public static readonly string sql = @"
+select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
+  from Inv_Client_Task_Resources r
+  join Inv_AeX_AC_TCPIP i
+    on r._ResourceGuid = i._resourceguid
+ where LastRegistered < GETDATE() - 14
+   and HasTaskAgent = 1
+";
+
 		public static void Main() {
 			try {
-				// SecurityContextManager.SetContextData();
-				// DataTable scope_collections = DatabaseAPI.GetTable("select top 10 * from sys.objects");
+				SecurityContextManager.SetContextData();
+				DataTable computers = DatabaseAPI.GetTable(sql);
 				
 				Pinger p = new Pinger();
-				Pinger.HostQueue.Enqueue("www.google.com");
-				Pinger.HostQueue.Enqueue("www.symantec.com");
-				Pinger.HostQueue.Enqueue("www.cisco.com");
-				Pinger.HostQueue.Enqueue("www.yahoo.com");
-				Pinger.HostQueue.Enqueue("www.apple.com");
-				Pinger.HostQueue.Enqueue("www.ibm.com");
-				Pinger.HostQueue.Enqueue("www.linux.org");
-				Pinger.HostQueue.Enqueue("www.15-cloud.fr");
 				
+				foreach (DataRow r in computers.Rows) {
+						Pinger.HostQueue.Enqueue(r[0].ToString());
+				}
+				Console.WriteLine();
+
 				Collection<Thread> pool = new Collection<Thread>();
-				for (int i = 0; i < 4; i++) {
+				for (int i = 0; i < 50; i++) {
 					Thread t = new Thread(new ThreadStart(p.RunPing));
 					t.Start();
 					pool.Add(t);
 				}
 				
+				foreach (Thread t in pool) {
+					Console.WriteLine("Waiting for thread {0} to complete work...", t.ManagedThreadId.ToString());
+					t.Join();
+				}
 				
-				Thread s = new Thread(new ThreadStart(p.RunPing));
-				s.Start();
+				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", Pinger.ResultQueue.Count.ToString());
 				
-				// p.RunPing();
+				KeyValuePair<string, int> results = new KeyValuePair<string, int>();
+				while (Pinger.ResultQueue.Count > 0) {
+					results = (KeyValuePair<string, int>) Pinger.ResultQueue.Dequeue();
+					if (results.Value != 0)
+						Console.WriteLine("{1} for host {0}.", results.Key, (results.Value != 0) ? "SUCCESS" : "Failure");
+				}				
 				
 			} catch (Exception e) {
 				// EventLog.ReportError(String.Format("{0}\n{1}", e.Message, e.InnerException));
@@ -74,17 +89,21 @@ namespace Symantec.CWoC {
 				string tid =  Thread.CurrentThread.ManagedThreadId.ToString();
 				try {
 					Ping ping = new Ping();
-					PingReply result = ping.Send(hostname);
 					
+					Console.Write("Pinging... Entries in queue = {0}, Results enqueued = {1} \t[tid = {2}]\r", HostQueue.Count.ToString("#####") , ResultQueue.Count.ToString("#####"), tid);
+					PingReply result = ping.Send(hostname);
+
 					if (result.Status == IPStatus.Success) {
-						Console.WriteLine("Ping succedded to {0} ({1}), round trip time = {2} ms. [tid = {3}]", hostname, result.Address.ToString(), result.RoundtripTime, tid);
+						SaveResult(hostname, 1);
+						// Console.WriteLine("Ping succedded to {0} ({1}), round trip time = {2} ms. [tid = {3}]", hostname, result.Address.ToString(), result.RoundtripTime, tid);
 					} else {
-						Console.WriteLine("Failed to ping host {0} (tid={1})", hostname, tid);
+						SaveResult(hostname, 0);	
+						// Console.WriteLine("Failed to ping host {0} (tid={1})", hostname, tid);
 					}
 				} catch {
-					Console.WriteLine("Failed to ping host {0} (tid={1})", hostname, tid);
+					SaveResult(hostname, 0);
+					// Console.WriteLine("Failed to ping host {0} (tid={1})", hostname, tid);
 				}
-					SaveResult(hostname, 0);	
 			}
 		}
 		public string GetHost() {
@@ -95,7 +114,8 @@ namespace Symantec.CWoC {
 				return "";
 		}
 		public void SaveResult(string hostname, int status) {
-		
+			KeyValuePair<string, int> kvp = new KeyValuePair<string, int>(hostname, status);
+			ResultQueue.Enqueue(kvp);
 		}
 	}
 }
