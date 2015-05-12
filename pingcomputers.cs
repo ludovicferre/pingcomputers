@@ -18,6 +18,7 @@ namespace Symantec.CWoC {
     class PingComputers {
 	
 		public static readonly string sql = @"
+--   set rowcount 500
 select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
   from Inv_Client_Task_Resources r
   join Inv_AeX_AC_TCPIP i
@@ -36,7 +37,6 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				foreach (DataRow r in computers.Rows) {
 						Pinger.HostQueue.Enqueue(r[0].ToString());
 				}
-				Console.WriteLine();
 
 				Collection<Thread> pool = new Collection<Thread>();
 				for (int i = 0; i < 50; i++) {
@@ -45,10 +45,13 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 					pool.Add(t);
 				}
 				
+				Console.WriteLine("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.", pool.Count.ToString(), Pinger.HostQueue.Count.ToString(), Pinger.ResultQueue.Count.ToString());
+				
 				foreach (Thread t in pool) {
-					Console.WriteLine("Waiting for thread {0} to complete work...", t.ManagedThreadId.ToString());
+					Console.Write(".");
 					t.Join();
 				}
+				Console.WriteLine();
 				
 				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", Pinger.ResultQueue.Count.ToString());
 				
@@ -90,7 +93,7 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				try {
 					Ping ping = new Ping();
 					
-					Console.Write("Pinging... Entries in queue = {0}, Results enqueued = {1} \t[tid = {2}]\r", HostQueue.Count.ToString("#####") , ResultQueue.Count.ToString("#####"), tid);
+					// Console.Write("Pinging... Entries in queue = {0}, Results enqueued = {1} \t[tid = {2}]\r", HostQueue.Count.ToString("#####") , ResultQueue.Count.ToString("#####"), tid);
 					PingReply result = ping.Send(hostname);
 
 					if (result.Status == IPStatus.Success) {
