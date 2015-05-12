@@ -20,13 +20,19 @@ namespace Symantec.CWoC {
     class PingComputers {
 	
 		public static readonly string sql = @"
-   set rowcount 50
+-- Get TS/PS computers for test
+select distinct(s.[Host Name] + '.' + s.[Primary DNS Suffix])
+  from vSiteServices s
+ order by s.[Host Name] + '.' + s.[Primary DNS Suffix]
+
+/*
 select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
   from Inv_Client_Task_Resources r
   join Inv_AeX_AC_TCPIP i
     on r._ResourceGuid = i._resourceguid
  where LastRegistered < GETDATE() - 14
    and HasTaskAgent = 1
+*/
 ";
 
 		public static void Main() {
@@ -39,6 +45,7 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				foreach (DataRow r in computers.Rows) {
 						p.HostQueue.Enqueue(r[0].ToString());
 				}
+
 
 				Collection<Thread> pool = new Collection<Thread>();
 				
@@ -83,12 +90,12 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				
 				// Reset the thread pool and limit
 				pool.Clear();
-				pool_depth = sc.HostQueue.Count / 10;
+				pool_depth = sc.HostQueue.Count / 5;
 				
 				// Make sure we don't have more than 50 threads
 				if (pool_depth > 50)
 					pool_depth = 50;
-					
+					 
 				// and at least 1 thread running
 				if (pool_depth == 0)
 					pool_depth = 1;
