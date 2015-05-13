@@ -20,19 +20,20 @@ namespace Symantec.CWoC {
     class PingComputers {
 	
 		public static readonly string sql = @"
+/*
 -- Get TS/PS computers for test
 select distinct(s.[Host Name] + '.' + s.[Primary DNS Suffix])
   from vSiteServices s
  order by s.[Host Name] + '.' + s.[Primary DNS Suffix]
+*/
 
-/*
 select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
   from Inv_Client_Task_Resources r
   join Inv_AeX_AC_TCPIP i
     on r._ResourceGuid = i._resourceguid
  where LastRegistered < GETDATE() - 14
    and HasTaskAgent = 1
-*/
+
 ";
 
 		public static void Main() {
@@ -46,7 +47,6 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 						p.HostQueue.Enqueue(r[0].ToString());
 				}
 
-
 				Collection<Thread> pool = new Collection<Thread>();
 				
 				int pool_depth = p.HostQueue.Count / 10;
@@ -58,6 +58,8 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				// and at least 1 thread running
 				if (pool_depth == 0)
 					pool_depth = 1;
+					
+				p.ThreadPoolDepth = pool_depth;
 				
 				for (int i = 0; i < pool_depth; i++) {
 					Thread t = new Thread(new ThreadStart(p.RunPing));
@@ -65,15 +67,17 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 					pool.Add(t);
 				}
 				
-				Console.WriteLine("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.", pool.Count.ToString(), p.HostQueue.Count.ToString(), p.ResultQueue.Count.ToString());
-				
+				Thread m = new Thread(new ThreadStart(p.PrintStatus));
+				m.Start();
+				m.Join();
+
 				foreach (Thread t in pool) {
 					Console.Write(".");
 					t.Join();
 				}
-				Console.WriteLine();
+
 				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", p.ResultQueue.Count.ToString());
-				
+			
 				// Move to stage 2: check the Altiris Agent status if possible
 				ServiceChecker sc = new ServiceChecker();
 
@@ -85,9 +89,7 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 						sc.HostQueue.Enqueue(results.Key);
 					}
 				}
-				
-				// All reachable computers are available for the ServiceChecker - run multi-threaded check now.
-				
+								
 				// Reset the thread pool and limit
 				pool.Clear();
 				pool_depth = sc.HostQueue.Count / 5;
@@ -99,6 +101,8 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				// and at least 1 thread running
 				if (pool_depth == 0)
 					pool_depth = 1;
+					
+				sc.ThreadPoolDepth = pool_depth;
 
 				for (int i = 0; i < pool_depth; i++) {
 					Thread t = new Thread(new ThreadStart(sc.RunCheck));
@@ -106,14 +110,15 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 					pool.Add(t);
 				}
 
-				Console.WriteLine("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.", pool.Count.ToString(), sc.HostQueue.Count.ToString(), sc.ResultQueue.Count.ToString());
+				Thread n = new Thread(new ThreadStart(sc.PrintStatus));
+				n.Start();
+				n.Join();
 				
 				foreach (Thread t in pool) {
 					Console.Write(".");
 					t.Join();
 				}
-				Console.WriteLine();
-				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", sc.ResultQueue.Count.ToString());
+				Console.WriteLine("\n\nDequeueing results (we have {0} entries)...", sc.ResultQueue.Count.ToString());
 				
 				KeyValuePair<string, string> sc_results = new KeyValuePair<string, string>();
 				while (sc.ResultQueue.Count > 0) {
@@ -130,12 +135,14 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 	class Pinger {
 		private Queue baseHostQueue;
 		public Queue HostQueue;
+		public int ThreadPoolDepth;
 		
 		private Queue baseResultQueue;
 		public Queue ResultQueue;
 		
 		public Pinger() {
 			// Make sure the queues is initialized and synched
+			ThreadPoolDepth = 0;
 			baseResultQueue = new Queue();
 			ResultQueue = Queue.Synchronized(baseResultQueue);
 			
@@ -168,6 +175,15 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				}
 			}
 		}
+		
+		public void PrintStatus () {
+			while (HostQueue.Count > 0) {
+				Console.Write("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.\r", ThreadPoolDepth.ToString(), HostQueue.Count.ToString(), ResultQueue.Count.ToString());
+				Thread.Sleep(1000);
+			}
+			Console.WriteLine("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.", ThreadPoolDepth.ToString(), HostQueue.Count.ToString(), ResultQueue.Count.ToString());
+		}
+
 		public string GetHost() {
 			// Get hostname from a queue
 			if (HostQueue.Count > 0) 
@@ -189,6 +205,7 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 		public Queue ResultQueue;
 		
 		private string service_name;
+		public int ThreadPoolDepth;
 		
 		public ServiceChecker(string service) {
 			service_name = service;
@@ -220,6 +237,14 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 					SaveResult(hostname, "ERROR");
 				}
 			}
+		}
+
+		public void PrintStatus () {
+			while (HostQueue.Count > 0) {
+				Console.Write("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.\r", ThreadPoolDepth.ToString(), HostQueue.Count.ToString(), ResultQueue.Count.ToString());
+				Thread.Sleep(1000);
+			}
+			Console.WriteLine("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.", ThreadPoolDepth.ToString(), HostQueue.Count.ToString(), ResultQueue.Count.ToString());
 		}
 
 		public string GetHost() {
