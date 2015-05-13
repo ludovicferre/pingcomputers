@@ -132,29 +132,55 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
             Timer.Stop();
 		}
     }
-
-	class Pinger {
+	
+	class QueueWorker {
 		private Queue baseHostQueue;
 		public Queue HostQueue;
 		public int ThreadPoolDepth;
 		
 		private Queue baseResultQueue;
 		public Queue ResultQueue;
+	
+		public QueueWorker(){
+			init();
+		}
 		
-		public Pinger() {
-			// Make sure the queues is initialized and synched
+		public void init() {
 			ThreadPoolDepth = 0;
 			baseResultQueue = new Queue();
 			ResultQueue = Queue.Synchronized(baseResultQueue);
 			
 			baseHostQueue = new Queue();
 			HostQueue = Queue.Synchronized(baseHostQueue);
-			
 		}
-	
+		
+		public virtual void PrintStatus() {}
+		public virtual void SaveResults() {}
+		public virtual void PrintResults() {}
+
+		public void StoreResult(string hostname, int status) {
+			KeyValuePair<string, int> kvp = new KeyValuePair<string, int>(hostname, status);
+			ResultQueue.Enqueue(kvp);
+		}
+
+		public void StoreResult(string hostname, string status) {
+			KeyValuePair<string, string> kvp = new KeyValuePair<string, string>(hostname, status);
+			ResultQueue.Enqueue(kvp);
+		}
+
+		public string GetHostname() {
+			// Get hostname from a queue
+			if (HostQueue.Count > 0) 
+				return HostQueue.Dequeue().ToString();
+			else
+				return "";
+		}
+	}
+
+	class Pinger : QueueWorker {	
 		public void RunPing () {
 			string hostname = "";
-			while ((hostname = GetHost()) != "")  {
+			while ((hostname = GetHostname()) != "")  {
 				// Do the ping
 				string tid =  Thread.CurrentThread.ManagedThreadId.ToString();
 				try {
@@ -177,7 +203,7 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 			}
 		}
 		
-		public void PrintStatus () {
+		public override void PrintStatus () {
 			while (HostQueue.Count > 0) {
 				Console.Write("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.\r", ThreadPoolDepth.ToString(), HostQueue.Count.ToString(), ResultQueue.Count.ToString());
 				Thread.Sleep(1000);
@@ -185,60 +211,28 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 			Console.WriteLine("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.", ThreadPoolDepth.ToString(), HostQueue.Count.ToString(), ResultQueue.Count.ToString());
 		}
 
-		public string GetHost() {
-			// Get hostname from a queue
-			if (HostQueue.Count > 0) 
-				return HostQueue.Dequeue().ToString();
-			else
-				return "";
-		}
-
-		public void StoreResult(string hostname, int status) {
-			KeyValuePair<string, int> kvp = new KeyValuePair<string, int>(hostname, status);
-			ResultQueue.Enqueue(kvp);
-		}
-
-		public void PrintResults() {
+		public override void PrintResults() {
 			foreach (KeyValuePair<String, int> kvp in ResultQueue) {
 				Console.WriteLine("Ping statuis = {1} for host {0}.", kvp.Key, (kvp.Value != 0) ? "SUCCESS" : "Failure");
 			}
 		}
 		
-		public void SaveResults() {
+		public override void SaveResults() {
 		}
 	}
 
-	class ServiceChecker {
-		private Queue baseHostQueue;
-		public Queue HostQueue;
-		
-		private Queue baseResultQueue;
-		public Queue ResultQueue;
-		
+	class ServiceChecker : QueueWorker {
 		private string service_name;
-		public int ThreadPoolDepth;
-		
 		public ServiceChecker(string service) {
 			service_name = service;
-			init();
-		}
-		
+		}		
 		public ServiceChecker() {
 			service_name = "AeXNSClient";
-			init();
-		}
-		
-		private void init() {
-			baseResultQueue = new Queue();
-			ResultQueue = Queue.Synchronized(baseResultQueue);
-			
-			baseHostQueue = new Queue();
-			HostQueue = Queue.Synchronized(baseHostQueue);
-		}
+		}		
 		
 		public void RunCheck() {
 			string hostname = "";
-			while ((hostname = GetHost()) != "")  {
+			while ((hostname = GetHostname()) != "")  {
 				// Do the ping
 				string tid =  Thread.CurrentThread.ManagedThreadId.ToString();
 				try {
@@ -250,7 +244,7 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 			}
 		}
 
-		public void PrintStatus () {
+		public override void PrintStatus () {
 			while (HostQueue.Count > 0) {
 				Console.Write("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.\r", ThreadPoolDepth.ToString(), HostQueue.Count.ToString(), ResultQueue.Count.ToString());
 				Thread.Sleep(1000);
@@ -258,26 +252,13 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 			Console.WriteLine("Currently running {0} threads, {1} queued hostnames, {2} tested hostnames.", ThreadPoolDepth.ToString(), HostQueue.Count.ToString(), ResultQueue.Count.ToString());
 		}
 
-		public string GetHost() {
-			// Get hostname from a queue
-			if (HostQueue.Count > 0) 
-				return HostQueue.Dequeue().ToString();
-			else
-				return "";
-		}
-
-		public void StoreResult(string hostname, string status) {
-			KeyValuePair<string, string> kvp = new KeyValuePair<string, string>(hostname, status);
-			ResultQueue.Enqueue(kvp);
-		}
-
-		public void PrintResults() {
+		public override void PrintResults() {
 			foreach (KeyValuePair<string, string> kvp in ResultQueue) {
 				Console.WriteLine("Altiris Agent service status for host {0}: {1}", kvp.Key, kvp.Value);
 			}
 		}
 		
-		public void SaveResults() {
+		public override void SaveResults() {
 		}
 	}
 
