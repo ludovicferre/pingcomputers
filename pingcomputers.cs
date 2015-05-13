@@ -12,8 +12,6 @@ using System.Net.NetworkInformation;
 using Altiris.NS.Logging;
 using Altiris.NS.Scoping;
 using Altiris.NS.Security;
-using Altiris.NS.StandardItems.Collection.Scoping;
-using Altiris.NS.ResourceManagement;
 using Symantec.CWoC.APIWrappers;
 
 namespace Symantec.CWoC {
@@ -37,6 +35,7 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 ";
 
 		public static void Main() {
+			Timer.Init();
 			try {
 				SecurityContextManager.SetContextData();
 				DataTable computers = DatabaseAPI.GetTable(sql);
@@ -130,8 +129,10 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				// EventLog.ReportError(String.Format("{0}\n{1}", e.Message, e.InnerException));
 				Console.WriteLine("{0}\n{1}", e.Message, e.InnerException);
 			}
+            Timer.Stop();
 		}
     }
+
 	class Pinger {
 		private Queue baseHostQueue;
 		public Queue HostQueue;
@@ -163,14 +164,14 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 					PingReply result = ping.Send(hostname);
 
 					if (result.Status == IPStatus.Success) {
-						SaveResult(hostname, 1);
+						StoreResult(hostname, 1);
 						// Console.WriteLine("Ping succedded to {0} ({1}), round trip time = {2} ms. [tid = {3}]", hostname, result.Address.ToString(), result.RoundtripTime, tid);
 					} else {
-						SaveResult(hostname, 0);	
+						StoreResult(hostname, 0);	
 						// Console.WriteLine("Failed to ping host {0} (tid={1})", hostname, tid);
 					}
 				} catch {
-					SaveResult(hostname, 0);
+					StoreResult(hostname, 0);
 					// Console.WriteLine("Failed to ping host {0} (tid={1})", hostname, tid);
 				}
 			}
@@ -191,9 +192,19 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 			else
 				return "";
 		}
-		public void SaveResult(string hostname, int status) {
+
+		public void StoreResult(string hostname, int status) {
 			KeyValuePair<string, int> kvp = new KeyValuePair<string, int>(hostname, status);
 			ResultQueue.Enqueue(kvp);
+		}
+
+		public void PrintResults() {
+			foreach (KeyValuePair<String, int> kvp in ResultQueue) {
+				Console.WriteLine("Ping statuis = {1} for host {0}.", kvp.Key, (kvp.Value != 0) ? "SUCCESS" : "Failure");
+			}
+		}
+		
+		public void SaveResults() {
 		}
 	}
 
@@ -232,9 +243,9 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				string tid =  Thread.CurrentThread.ManagedThreadId.ToString();
 				try {
 					ServiceController sc = new ServiceController(service_name, hostname);
-					SaveResult(hostname, sc.Status.ToString());
+					StoreResult(hostname, sc.Status.ToString());
 				} catch {
-					SaveResult(hostname, "ERROR");
+					StoreResult(hostname, "ACCESS_DENIED");
 				}
 			}
 		}
@@ -255,10 +266,41 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				return "";
 		}
 
-		public void SaveResult(string hostname, string status) {
+		public void StoreResult(string hostname, string status) {
 			KeyValuePair<string, string> kvp = new KeyValuePair<string, string>(hostname, status);
 			ResultQueue.Enqueue(kvp);
 		}
+
+		public void PrintResults() {
+			foreach (KeyValuePair<string, string> kvp in ResultQueue) {
+				Console.WriteLine("Altiris Agent service status for host {0}: {1}", kvp.Key, kvp.Value);
+			}
+		}
+		
+		public void SaveResults() {
+		}
 	}
+
+    class Timer {
+        private static Stopwatch chrono;
+
+        public static void Init() {
+            chrono = new Stopwatch();
+            chrono.Start();
+        }
+
+        public static void Start() {
+            chrono.Start();
+        }
+        public static void Stop() {
+            chrono.Stop();
+        }
+        public static string tickCount() {
+            return chrono.ElapsedTicks.ToString();
+        }
+        public static string duration() {
+            return chrono.ElapsedMilliseconds.ToString();
+        }
+    }
 	
 }
