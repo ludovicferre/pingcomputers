@@ -24,12 +24,12 @@ select distinct(s.[Host Name] + '.' + s.[Primary DNS Suffix])
   from vSiteServices s
  order by s.[Host Name] + '.' + s.[Primary DNS Suffix]
 */
-
+-- set rowcount 1500
 select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
   from Inv_Client_Task_Resources r
   join Inv_AeX_AC_TCPIP i
     on r._ResourceGuid = i._resourceguid
- where LastRegistered < GETDATE() - 14
+ where LastRegistered < GETDATE() - 7
    and HasTaskAgent = 1
 
 ";
@@ -111,10 +111,12 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 
 				Thread n = new Thread(new ThreadStart(sc.PrintStatus));
 				n.Start();
+				
+				Console.Write("Waiting for threads to converg back...");
 				n.Join();
 				
 				foreach (Thread t in pool) {
-					Console.Write(".");
+					Console.Write("!");
 					t.Join();
 				}
 				Console.WriteLine("\n\nDequeueing results (we have {0} entries)...", sc.ResultQueue.Count.ToString());
@@ -213,7 +215,7 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 
 		public override void PrintResults() {
 			foreach (KeyValuePair<String, int> kvp in ResultQueue) {
-				Console.WriteLine("Ping statuis = {1} for host {0}.", kvp.Key, (kvp.Value != 0) ? "SUCCESS" : "Failure");
+				Console.WriteLine("Ping status = {1} for host {0}.", kvp.Key, (kvp.Value != 0) ? "SUCCESS" : "Failure");
 			}
 		}
 		
@@ -237,9 +239,23 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				string tid =  Thread.CurrentThread.ManagedThreadId.ToString();
 				try {
 					ServiceController sc = new ServiceController(service_name, hostname);
+					if (sc.Status == ServiceControllerStatus.Stopped) {
+						// Start the service if it is stopped.
+						int i = 0;
+						while (i < 5) {
+							sc.Start();
+							i++;
+							sc.Refresh();
+							if (sc.Status == ServiceControllerStatus.Running)
+								break;
+						}
+						if (i > 4) {
+							Console.WriteLine("Failed to start the Altiris Agent service {0} times on {1}...", (i + 1).ToString(), hostname);
+						}
+					}
 					StoreResult(hostname, sc.Status.ToString());
 				} catch {
-					StoreResult(hostname, "ACCESS_DENIED");
+					StoreResult(hostname, "EXCEPTION");
 				}
 			}
 		}
@@ -254,7 +270,9 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 
 		public override void PrintResults() {
 			foreach (KeyValuePair<string, string> kvp in ResultQueue) {
-				Console.WriteLine("Altiris Agent service status for host {0}: {1}", kvp.Key, kvp.Value);
+				if (kvp.Value != "EXCEPTION") {
+					Console.WriteLine("Altiris Agent service status for host {0}: {1}", kvp.Key, kvp.Value);
+				}
 			}
 		}
 		
