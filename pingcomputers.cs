@@ -46,34 +46,15 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 						p.HostQueue.Enqueue(r[0].ToString());
 				}
 
-				Collection<Thread> pool = new Collection<Thread>();
+				ThreadPool pp = new ThreadPool();
+				pp.PoolDepth = p.HostQueue.Count / 10;
 				
-				int pool_depth = p.HostQueue.Count / 10;
-				
-				// Make sure we don't have more than 50 threads
-				if (pool_depth > 50)
-					pool_depth = 50;
-					
-				// and at least 1 thread running
-				if (pool_depth == 0)
-					pool_depth = 1;
-					
-				p.ThreadPoolDepth = pool_depth;
-				
-				for (int i = 0; i < pool_depth; i++) {
-					Thread t = new Thread(new ThreadStart(p.RunPing));
-					t.Start();
-					pool.Add(t);
-				}
+				pp.StartAll(p.RunPing);
 				
 				Thread m = new Thread(new ThreadStart(p.PrintStatus));
 				m.Start();
 				m.Join();
-
-				foreach (Thread t in pool) {
-					Console.Write(".");
-					t.Join(1000);
-				}
+				pp.JoinAll();
 
 				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", p.ResultQueue.Count.ToString());
 			
@@ -87,33 +68,12 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 						sc.HostQueue.Enqueue(results.Key);
 					}
 				}
-								
-				// Reset the thread pool and limit
-//				pool.Clear();
-				pool_depth = sc.HostQueue.Count / 5;
 
-/*				
-				// Make sure we don't have more than 50 threads
-				if (pool_depth > 50)
-					pool_depth = 50;
-					 
-				// and at least 1 thread running
-				if (pool_depth == 0)
-					pool_depth = 1;
-					
-				sc.ThreadPoolDepth = pool_depth;
-
-				for (int i = 0; i < pool_depth; i++) {
-					Thread t = new Thread(new ThreadStart(sc.RunCheck));
-					t.Start();
-					pool.Add(t);
-				}
-*/					
 				Thread n = new Thread(new ThreadStart(sc.PrintStatus));
 				n.Start();
 		
 				ThreadPool tp = new ThreadPool();
-				tp.PoolDepth = pool_depth;
+				tp.PoolDepth = sc.HostQueue.Count / 5;
 				
 				tp.StartAll(sc.RunCheck);
 				Console.WriteLine("Waiting for threads to converge back...");
@@ -121,10 +81,6 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				n.Join();
 				tp.JoinAll();
 
-				foreach (Thread t in pool) {
-					Console.Write("!");
-					t.Join(1000);
-				}
 				Console.WriteLine("\n\nDequeueing results (we have {0} entries)...", sc.ResultQueue.Count.ToString());
 				sc.PrintResults();
 
