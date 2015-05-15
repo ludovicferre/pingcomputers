@@ -40,47 +40,43 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				SecurityContextManager.SetContextData();
 				DataTable computers = DatabaseAPI.GetTable(sql);
 				
-				Pinger p = new Pinger();
+				Pinger pinger = new Pinger();
 				
 				foreach (DataRow r in computers.Rows) {
-						p.HostQueue.Enqueue(r[0].ToString());
+						pinger.HostQueue.Enqueue(r[0].ToString());
 				}
 
-				ThreadPool pp = new ThreadPool();
-				pp.PoolDepth = p.HostQueue.Count / 10;
-				
-				pp.StartAll(p.RunPing);
-				
-				Thread m = new Thread(new ThreadStart(p.PrintStatus));
-				m.Start();
-				m.Join();
-				pp.JoinAll();
+				// Create a thread pool to run the ping task
+				ThreadPool pinger_thread_pool = new ThreadPool();
+				Thread pinger_status_thread = new Thread(new ThreadStart(pinger.PrintStatus));
 
-				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", p.ResultQueue.Count.ToString());
+				pinger_status_thread.Start();
+				pinger_thread_pool.PoolDepth = pinger.HostQueue.Count / 10;
+				pinger_thread_pool.StartAll(pinger.RunPing);
+				pinger_status_thread.Join();
+				pinger_thread_pool.JoinAll();
+
+				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", pinger.ResultQueue.Count.ToString());
 			
 				// Move to stage 2: check the Altiris Agent status if possible
 				ServiceChecker sc = new ServiceChecker();
 
 				KeyValuePair<string, string> results = new KeyValuePair<string, string>();
-				while (p.ResultQueue.Count > 0) {
-					results = (KeyValuePair<string, string>) p.ResultQueue.Dequeue();
-					if (results.Value == "1") {
+				while (pinger.ResultQueue.Count > 0) {
+					results = (KeyValuePair<string, string>) pinger.ResultQueue.Dequeue();
+					if (results.Value == "1")
 						sc.HostQueue.Enqueue(results.Key);
-					}
 				}
 
-				Thread n = new Thread(new ThreadStart(sc.PrintStatus));
-				n.Start();
-		
-				ThreadPool tp = new ThreadPool();
-				tp.PoolDepth = sc.HostQueue.Count / 5;
+				ThreadPool sc_thread_pool = new ThreadPool();
+				Thread sc_status_thread = new Thread(new ThreadStart(sc.PrintStatus));
+
+				sc_status_thread.Start();
+				sc_thread_pool.PoolDepth = sc.HostQueue.Count / 5;				
+				sc_thread_pool.StartAll(sc.RunCheck);
+				sc_status_thread.Join();
+				sc_thread_pool.JoinAll();
 				
-				tp.StartAll(sc.RunCheck);
-				Console.WriteLine("Waiting for threads to converge back...");
-
-				n.Join();
-				tp.JoinAll();
-
 				Console.WriteLine("\n\nDequeueing results (we have {0} entries)...", sc.ResultQueue.Count.ToString());
 				sc.PrintResults();
 
@@ -132,7 +128,9 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 		public void JoinAll() {
 			foreach(Thread t in pool) {
 				t.Join(1000);
+				Console.Write(".")
 			}
+			Console.WriteLine(".");
 		}
 	}
 	
