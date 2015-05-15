@@ -128,7 +128,7 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 		public void JoinAll() {
 			foreach(Thread t in pool) {
 				t.Join(1000);
-				Console.Write(".")
+				Console.Write(".");
 			}
 			Console.WriteLine(".");
 		}
