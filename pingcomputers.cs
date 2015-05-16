@@ -1,16 +1,12 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections;
 using System.ServiceProcess;
-//using System.Diagnostics;
 using System.Text;
 using System.Data;
-using System.Data.SqlClient;
 using System.Threading;
 using System.Net.NetworkInformation;
 using Altiris.NS.Logging;
-using Altiris.NS.Scoping;
 using Altiris.NS.Security;
 using Symantec.CWoC.APIWrappers;
 
@@ -18,12 +14,7 @@ namespace Symantec.CWoC {
     class PingComputers {
 	
 		public static readonly string sql = @"
-/*
--- Get TS/PS computers for test
-select distinct(s.[Host Name] + '.' + s.[Primary DNS Suffix]), s.Guid
-  from vSiteServices s
- order by s.[Host Name] + '.' + s.[Primary DNS Suffix]
-*/
+set rowcount 500
 SELECT i.fqdn, c.Guid
   FROM [vComputerResource] c
  INNER JOIN (
@@ -39,8 +30,8 @@ SELECT i.fqdn, c.Guid
 ";
 
 		public static void Main() {
-			Timer.Init();
 			try {
+				Timer main_timer = new Timer();
 				SecurityContextManager.SetContextData();
 				DataTable computers = DatabaseAPI.GetTable(sql);
 				
@@ -58,17 +49,23 @@ SELECT i.fqdn, c.Guid
 				pinger.ThreadPoolDepth = pinger_thread_pool.PoolDepth;
 
 				pinger_status_thread.Start();
+				
+				Timer ping_timer = new Timer();
 				pinger_thread_pool.StartAll(pinger.RunPing);
 				pinger_status_thread.Join();
+				
+				Console.WriteLine("Ping task ran for {0} ms.", ping_timer.duration);
+				ping_timer.init();
 				pinger_thread_pool.JoinAll();
+				Console.WriteLine("Thread convergence took {0} ms.", ping_timer.duration);
 
 				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", pinger.ResultQueue.Count.ToString());
 			
 				// Move to stage 2: check the Altiris Agent status if possible
 				ServiceChecker sc = new ServiceChecker();
-
 				TestResult result = new TestResult();
 				HostData hostdata = new HostData();
+
 				while (pinger.ResultQueue.Count > 0) {
 					result = (TestResult) pinger.ResultQueue.Dequeue();
 					if (result.status == "1") {
@@ -83,17 +80,23 @@ SELECT i.fqdn, c.Guid
 				sc.ThreadPoolDepth = sc_thread_pool.PoolDepth;
 
 				sc_status_thread.Start();
+
+				Timer sc_timer = new Timer();
 				sc_thread_pool.StartAll(sc.RunCheck);
 				sc_status_thread.Join();
 				sc_thread_pool.JoinAll();
 				
-				Console.WriteLine("\n\nDequeueing results (we have {0} entries)...", sc.ResultQueue.Count.ToString());
-				//sc.PrintResults();
-
+				Console.WriteLine("Done processing service control requests (we had {0} entries) in {1} ms...", sc.ResultQueue.Count.ToString(), sc_timer.duration);
+				Console.WriteLine("Processing of {3} entries completed in {0} ms, using {1} threads for ping and {2} threads for service control checks."
+					, main_timer.duration
+					, pinger_thread_pool.PoolDepth.ToString()
+					, sc_thread_pool.PoolDepth.ToString()
+					, computers.Rows.Count.ToString()
+					);
 			} catch (Exception e) {
 				EventLog.ReportError(String.Format("{0}\n{1}", e.Message, e.InnerException));
 			}
-            Timer.Stop();
+			Console.WriteLine("Waiting for thread and process tear down...");
 		}
     }
 
@@ -353,24 +356,34 @@ end
 	}
 
     class Timer {
-        private static System.Diagnostics.Stopwatch chrono;
+        private System.Diagnostics.Stopwatch chrono;
+		public string duration {
+			get {
+				return chrono.ElapsedMilliseconds.ToString();
+			}
+		}
+		
+		public string tickcount {
+			get {
+				return chrono.ElapsedTicks.ToString();
+			}
+		}
+		
+		public Timer() {
+			init();
+		}
 
-        public static void Init() {
+        public void init() {
             chrono = new System.Diagnostics.Stopwatch();
             chrono.Start();
         }
 
-        public static void Start() {
+        public void start() {
             chrono.Start();
         }
-        public static void Stop() {
+
+        public void stop() {
             chrono.Stop();
-        }
-        public static string tickCount() {
-            return chrono.ElapsedTicks.ToString();
-        }
-        public static string duration() {
-            return chrono.ElapsedMilliseconds.ToString();
         }
     }
 	
