@@ -20,12 +20,12 @@ namespace Symantec.CWoC {
 		public static readonly string sql = @"
 /*
 -- Get TS/PS computers for test
-select distinct(s.[Host Name] + '.' + s.[Primary DNS Suffix])
+select distinct(s.[Host Name] + '.' + s.[Primary DNS Suffix]), s.Guid
   from vSiteServices s
  order by s.[Host Name] + '.' + s.[Primary DNS Suffix]
 */
 set rowcount 500
-select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
+select distinct (r._ResourceGuid), i.[Host Name] + '.' + i.[Primary DNS Suffix]
   from Inv_Client_Task_Resources r
   join Inv_AeX_AC_TCPIP i
     on r._ResourceGuid = i._resourceguid
@@ -43,7 +43,8 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				Pinger pinger = new Pinger();
 				
 				foreach (DataRow r in computers.Rows) {
-						pinger.HostQueue.Enqueue(r[0].ToString());
+					HostData d = new HostData(r[0].ToString(), r[1].ToString());
+					pinger.HostQueue.Enqueue(d);
 				}
 
 				// Create a thread pool to run the ping task
@@ -61,11 +62,13 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 				// Move to stage 2: check the Altiris Agent status if possible
 				ServiceChecker sc = new ServiceChecker();
 
-				KeyValuePair<string, string> results = new KeyValuePair<string, string>();
+				TestResult result = new TestResult();
+				HostData hostdata = new HostData();
 				while (pinger.ResultQueue.Count > 0) {
-					results = (KeyValuePair<string, string>) pinger.ResultQueue.Dequeue();
-					if (results.Value == "1")
-						sc.HostQueue.Enqueue(results.Key);
+					result = (TestResult) pinger.ResultQueue.Dequeue();
+					if (result.status == "1")
+						hostdata = new HostData(result.host_name, result.host_guid);
+						sc.HostQueue.Enqueue(hostdata);
 				}
 
 				ThreadPool sc_thread_pool = new ThreadPool();
@@ -89,6 +92,32 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 		
     }
 
+	class HostData {
+		public string host_name;
+		public string host_guid;
+		
+		public HostData() {
+			host_name = "";
+			host_guid = "";
+		}
+		
+		public HostData(string name, string guid) {
+			host_name = name;
+			host_guid = guid;
+		}
+	}
+	
+	class TestResult : HostData {
+		public string status;
+		
+		public TestResult() {
+			status = "";
+		}
+		
+		public TestResult(string _status) {
+			status = _status;
+		}
+	}
 
 	class ThreadPool {
 		private int pool_depth;
@@ -172,41 +201,43 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 
 		public virtual void SaveResults() {}
 
-		public void StoreResult(string hostname, string status) {
-			KeyValuePair<string, string> kvp = new KeyValuePair<string, string>(hostname, status);
-			ResultQueue.Enqueue(kvp);
+		public void StoreResult(TestResult result) {
+			ResultQueue.Enqueue(result);
 		}
 
-		public string GetHostname() {
+		public HostData GetHostdata() {
 			// Get hostname from a queue
 			if (HostQueue.Count > 0) 
-				return HostQueue.Dequeue().ToString();
+				return (HostData) HostQueue.Dequeue();
 			else
-				return "";
+				return new HostData();
 		}
 	}
 
 	class Pinger : QueueWorker {	
 		public void RunPing () {
-			string hostname = "";
-			while ((hostname = GetHostname()) != "")  {
-				// string tid =  Thread.CurrentThread.ManagedThreadId.ToString();
+			while (true)  {
+				HostData hostdata = GetHostdata();
+				if (hostdata.host_name == "" && hostdata.host_guid == "")
+					break;
+				TestResult testresult = new TestResult();
 				try {
-					Ping ping = new Ping();
+					testresult.host_name = hostdata.host_name;
+					testresult.host_guid = hostdata.host_guid;
 					
-					// Console.Write("Pinging... Entries in queue = {0}, Results enqueued = {1} \t[tid = {2}]\r", HostQueue.Count.ToString("#####") , ResultQueue.Count.ToString("#####"), tid);
-					PingReply result = ping.Send(hostname);
+					Ping ping = new Ping();
+					PingReply result = ping.Send(hostdata.host_name);
 
 					if (result.Status == IPStatus.Success) {
-						StoreResult(hostname, "1");
-						// Console.WriteLine("Ping succedded to {0} ({1}), round trip time = {2} ms. [tid = {3}]", hostname, result.Address.ToString(), result.RoundtripTime, tid);
+						testresult.status = "1";
+						StoreResult(testresult);
 					} else {
-						StoreResult(hostname, "0");	
-						// Console.WriteLine("Failed to ping host {0} (tid={1})", hostname, tid);
+						testresult.status = "0";
+						StoreResult(testresult);	
 					}
-				} catch {
-					StoreResult(hostname, "Could not ping");
-					// Console.WriteLine("Failed to ping host {0} (tid={1})", hostname, tid);
+				} catch (Exception e){
+					testresult.status = e.Message;
+					StoreResult(testresult);
 				}
 			}
 		}
@@ -225,12 +256,15 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 		}		
 		
 		public void RunCheck() {
-			string hostname = "";
-			while ((hostname = GetHostname()) != "")  {
-				// Do the ping
-				string tid =  Thread.CurrentThread.ManagedThreadId.ToString();
+			while (true)  {
+				HostData hostdata = GetHostdata();
+				if (hostdata.host_name == "" && hostdata.host_guid == "")
+					break;
+				TestResult testresult = new TestResult();
 				try {
-					ServiceController sc = new ServiceController(service_name, hostname);
+					testresult.host_name = hostdata.host_name;
+					testresult.host_guid = hostdata.host_guid;
+					ServiceController sc = new ServiceController(service_name, hostdata.host_name);
 					if (sc.Status == ServiceControllerStatus.Stopped) {
 						// Start the service if it is stopped.
 						int i = 0;
@@ -242,12 +276,14 @@ select distinct(i.[Host Name] + '.' + i.[Primary DNS Suffix]) -- r._ResourceGuid
 								break;
 						}
 						if (i > 4) {
-							Console.WriteLine("Failed to start the Altiris Agent service {0} times on {1}...", (i + 1).ToString(), hostname);
+							Console.WriteLine("Failed to start the Altiris Agent service {0} times on {1}...", (i + 1).ToString(), testresult.host_name);
 						}
 					}
-					StoreResult(hostname, sc.Status.ToString());
-				} catch {
-					StoreResult(hostname, "EXCEPTION");
+					testresult.status = sc.Status.ToString();
+					StoreResult(testresult);
+				} catch (Exception e) {
+					testresult.status = e.Message;
+					StoreResult(testresult);
 				}
 			}
 		}
