@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections;
 using System.ServiceProcess;
-using System.Diagnostics;
+//using System.Diagnostics;
 using System.Text;
 using System.Data;
 using System.Data.SqlClient;
@@ -169,17 +169,23 @@ select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
 	
 	class QueueWorker {
 		private Queue baseHostQueue;
-		public Queue HostQueue;
-		public int ThreadPoolDepth;
-		
+		public Queue HostQueue;	
 		private Queue baseResultQueue;
 		public Queue ResultQueue;
 	
+		public int ThreadPoolDepth;
+		public bool DatabaseReady;
+
 		public QueueWorker(){
 			init();
 		}
 		
 		public 	void init() {
+			if (CreateTable() == 0)
+				DatabaseReady = true;
+			else
+				DatabaseReady = false;
+
 			ThreadPoolDepth = 0;
 			baseResultQueue = new Queue();
 			ResultQueue = Queue.Synchronized(baseResultQueue);
@@ -203,10 +209,9 @@ select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
 			}
 		}
 
-		public virtual void SaveResults() {}
-
-		public void StoreResult(TestResult result) {
+		public void StoreResult(TestResult result, string event_type) {
 			ResultQueue.Enqueue(result);
+			RecordEvent(result, event_type);
 		}
 
 		public HostData GetHostdata() {
@@ -215,6 +220,50 @@ select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
 				return (HostData) HostQueue.Dequeue();
 			else
 				return new HostData();
+		}
+
+		public void RecordEvent(TestResult result, string event_type) {
+			result.status = result.status.Replace("'", "\"");
+			string sql = String.Format("insert CWoC_Pinger_Event(timestamp, resourceguid, hostname, eventtype, [status]) values (getdate(), '{0}', '{1}', '{2}', '{3}')"
+							, result.host_guid
+							, result.host_name
+							, event_type
+							, result.status
+						);
+			if (DatabaseReady)
+				try {
+					DatabaseAPI.ExecuteNonQuery(sql);
+				} catch {
+					Console.WriteLine(sql);
+					Altiris.NS.Logging.EventLog.ReportError(sql);					
+				}
+			else
+				Console.WriteLine(sql);
+			Altiris.NS.Logging.EventLog.ReportInfo(sql);
+		}
+		
+		private int CreateTable () {
+			string sql = @"
+if not exists (select 1 from sys.objects where type = 'u' and name = 'CWoC_Pinger_Event')
+begin
+	create table CWoC_Pinger_Event (
+		[timestamp] datetime,
+		[resourceguid] uniqueidentifier,
+		[hostname] nvarchar(255),
+		[eventtype] nvarchar(255),
+		[status] nvarchar(max)
+	)
+end
+";
+			try {
+				DatabaseAPI.ExecuteNonQuery(sql);
+				return 0;
+			} catch (Exception e) {
+	            string msg = string.Format("Caught exception {0}\nInnerException={1}\nStackTrace={2}", e.Message, e.InnerException, e.StackTrace);
+				Console.WriteLine(msg);
+				EventLog.ReportError(msg);
+				return -1;
+			}
 		}
 	}
 
@@ -234,19 +283,16 @@ select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
 
 					if (result.Status == IPStatus.Success) {
 						testresult.status = "1";
-						StoreResult(testresult);
+						StoreResult(testresult, "ping");
 					} else {
 						testresult.status = "0";
-						StoreResult(testresult);	
+						StoreResult(testresult, "ping");	
 					}
 				} catch (Exception e){
 					testresult.status = e.Message;
-					StoreResult(testresult);
+					StoreResult(testresult, "ping");
 				}
 			}
-		}
-
-		public override void SaveResults() {
 		}
 	}
 
@@ -278,29 +324,31 @@ select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
 							sc.Refresh();
 							if (sc.Status == ServiceControllerStatus.Running)
 								break;
+							testresult.status = sc.Status.ToString();
+							StoreResult(testresult, "service_check");
 						}
 						if (i > 4) {
-							Console.WriteLine("Failed to start the Altiris Agent service {0} times on {1}...", (i + 1).ToString(), testresult.host_name);
+							string status = String.Format("Failed to start the Altiris Agent service {0} times...", (i + 1).ToString());
+							testresult.status = status;
+							StoreResult(testresult, "service_check");
 						}
+					} else {
+						testresult.status = sc.Status.ToString();
+						StoreResult(testresult, "service_check");
 					}
-					testresult.status = sc.Status.ToString();
-					StoreResult(testresult);
 				} catch (Exception e) {
 					testresult.status = e.Message;
-					StoreResult(testresult);
+					StoreResult(testresult, "service_check");
 				}
 			}
-		}
-		
-		public override void SaveResults() {
 		}
 	}
 
     class Timer {
-        private static Stopwatch chrono;
+        private static System.Diagnostics.Stopwatch chrono;
 
         public static void Init() {
-            chrono = new Stopwatch();
+            chrono = new System.Diagnostics.Stopwatch();
             chrono.Start();
         }
 
