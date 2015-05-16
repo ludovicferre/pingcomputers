@@ -240,7 +240,7 @@ SELECT i.fqdn, c.Guid
 			} else {
 				Console.WriteLine(sql);
 			}
-			Altiris.NS.Logging.EventLog.ReportInfo(sql);
+			Altiris.NS.Logging.EventLog.ReportVerbose(sql);
 		}
 		
 		private int CreateTable () {
