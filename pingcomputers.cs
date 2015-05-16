@@ -24,14 +24,18 @@ select distinct(s.[Host Name] + '.' + s.[Primary DNS Suffix]), s.Guid
   from vSiteServices s
  order by s.[Host Name] + '.' + s.[Primary DNS Suffix]
 */
-set rowcount 500
-select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
-  from Inv_Client_Task_Resources r
-  join Inv_AeX_AC_TCPIP i
-    on r._ResourceGuid = i._resourceguid
- where LastRegistered < GETDATE() - 7
-   and HasTaskAgent = 1
-
+SELECT i.fqdn, c.Guid
+  FROM [vComputerResource] c
+ INNER JOIN (
+			select [ResourceGuid], max([ModifiedDate]) as LatestInventoryDate from dbo.ResourceUpdateSummary  
+			where InventoryClassGuid = '9E6F402A-6A45-4CBA-9299-C2323F73A506'     
+			group by [ResourceGuid]  
+		) as dt
+	ON c.Guid = dt.ResourceGuid
+  LEFT JOIN Inv_AeX_AC_IDentification i
+    ON c.Guid = i._ResourceGuid
+ WHERE c.IsManaged = 1 
+   AND dt.LatestInventoryDate < getdate() - 7
 ";
 
 		public static void Main() {
@@ -68,7 +72,6 @@ select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
 				while (pinger.ResultQueue.Count > 0) {
 					result = (TestResult) pinger.ResultQueue.Dequeue();
 					if (result.status == "1") {
-						Console.WriteLine("{0}::{1}::{2}", result.host_name, result.host_guid, result.status);
 						hostdata = new HostData(result.host_name, result.host_guid);
 						sc.HostQueue.Enqueue(hostdata);
 					}
@@ -85,15 +88,13 @@ select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
 				sc_thread_pool.JoinAll();
 				
 				Console.WriteLine("\n\nDequeueing results (we have {0} entries)...", sc.ResultQueue.Count.ToString());
-				sc.PrintResults();
+				//sc.PrintResults();
 
 			} catch (Exception e) {
-				// EventLog.ReportError(String.Format("{0}\n{1}", e.Message, e.InnerException));
-				Console.WriteLine("{0}\n{1}", e.Message, e.InnerException);
+				EventLog.ReportError(String.Format("{0}\n{1}", e.Message, e.InnerException));
 			}
             Timer.Stop();
 		}
-		
     }
 
 	class HostData {
@@ -230,15 +231,15 @@ select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
 							, event_type
 							, result.status
 						);
-			if (DatabaseReady)
+			if (DatabaseReady) {
 				try {
 					DatabaseAPI.ExecuteNonQuery(sql);
 				} catch {
-					Console.WriteLine(sql);
-					Altiris.NS.Logging.EventLog.ReportError(sql);					
+					Altiris.NS.Logging.EventLog.ReportError("Failed to run SQL insert statement:\n\n" + sql);
 				}
-			else
+			} else {
 				Console.WriteLine(sql);
+			}
 			Altiris.NS.Logging.EventLog.ReportInfo(sql);
 		}
 		
@@ -253,6 +254,13 @@ begin
 		[eventtype] nvarchar(255),
 		[status] nvarchar(max)
 	)
+
+	CREATE UNIQUE CLUSTERED INDEX [CWoC_Pinger_Event_ClusteredIndex] ON [dbo].[CWoC_Pinger_Event] 
+	(
+		[eventtype] ASC,
+		[resourceguid] ASC,
+		[timestamp] ASC
+	)WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, SORT_IN_TEMPDB = OFF, IGNORE_DUP_KEY = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
 end
 ";
 			try {
