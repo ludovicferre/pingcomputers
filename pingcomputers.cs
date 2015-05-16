@@ -25,7 +25,7 @@ select distinct(s.[Host Name] + '.' + s.[Primary DNS Suffix]), s.Guid
  order by s.[Host Name] + '.' + s.[Primary DNS Suffix]
 */
 set rowcount 500
-select distinct (r._ResourceGuid), i.[Host Name] + '.' + i.[Primary DNS Suffix]
+select distinct (i.[Host Name] + '.' + i.[Primary DNS Suffix]), r._ResourceGuid
   from Inv_Client_Task_Resources r
   join Inv_AeX_AC_TCPIP i
     on r._ResourceGuid = i._resourceguid
@@ -50,9 +50,10 @@ select distinct (r._ResourceGuid), i.[Host Name] + '.' + i.[Primary DNS Suffix]
 				// Create a thread pool to run the ping task
 				ThreadPool pinger_thread_pool = new ThreadPool();
 				Thread pinger_status_thread = new Thread(new ThreadStart(pinger.PrintStatus));
+				pinger_thread_pool.PoolDepth = pinger.HostQueue.Count / 10;
+				pinger.ThreadPoolDepth = pinger_thread_pool.PoolDepth;
 
 				pinger_status_thread.Start();
-				pinger_thread_pool.PoolDepth = pinger.HostQueue.Count / 10;
 				pinger_thread_pool.StartAll(pinger.RunPing);
 				pinger_status_thread.Join();
 				pinger_thread_pool.JoinAll();
@@ -66,16 +67,19 @@ select distinct (r._ResourceGuid), i.[Host Name] + '.' + i.[Primary DNS Suffix]
 				HostData hostdata = new HostData();
 				while (pinger.ResultQueue.Count > 0) {
 					result = (TestResult) pinger.ResultQueue.Dequeue();
-					if (result.status == "1")
+					if (result.status == "1") {
+						Console.WriteLine("{0}::{1}::{2}", result.host_name, result.host_guid, result.status);
 						hostdata = new HostData(result.host_name, result.host_guid);
 						sc.HostQueue.Enqueue(hostdata);
+					}
 				}
 
 				ThreadPool sc_thread_pool = new ThreadPool();
 				Thread sc_status_thread = new Thread(new ThreadStart(sc.PrintStatus));
+				sc_thread_pool.PoolDepth = sc.HostQueue.Count / 5;
+				sc.ThreadPoolDepth = sc_thread_pool.PoolDepth;
 
 				sc_status_thread.Start();
-				sc_thread_pool.PoolDepth = sc.HostQueue.Count / 5;				
 				sc_thread_pool.StartAll(sc.RunCheck);
 				sc_status_thread.Join();
 				sc_thread_pool.JoinAll();
@@ -194,8 +198,8 @@ select distinct (r._ResourceGuid), i.[Host Name] + '.' + i.[Primary DNS Suffix]
 		}
 
 		public void PrintResults() {
-			foreach (KeyValuePair<string, string> kvp in ResultQueue) {
-				Console.WriteLine("Status = {1} for host {0}.", kvp.Key, kvp.Value);
+			foreach (TestResult result in ResultQueue) {
+				Console.WriteLine("Status = {0} for computer {1}::{2}.", result.status, result.host_guid, result.host_name);
 			}
 		}
 
