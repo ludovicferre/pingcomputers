@@ -84,9 +84,9 @@ SELECT i.fqdn, c.Guid
 				Timer sc_timer = new Timer();
 				sc_thread_pool.StartAll(sc.RunCheck);
 				sc_status_thread.Join();
+				Console.WriteLine("Done processing service control requests (we had {0} entries) in {1} ms...", sc.ResultQueue.Count.ToString(), sc_timer.duration);
 				sc_thread_pool.JoinAll();
 				
-				Console.WriteLine("Done processing service control requests (we had {0} entries) in {1} ms...", sc.ResultQueue.Count.ToString(), sc_timer.duration);
 				Console.WriteLine("Processing of {3} entries completed in {0} ms, using {1} threads for ping and {2} threads for service control checks."
 					, main_timer.duration
 					, pinger_thread_pool.PoolDepth.ToString()
@@ -124,50 +124,6 @@ SELECT i.fqdn, c.Guid
 		
 		public TestResult(string _status) {
 			status = _status;
-		}
-	}
-
-	class ThreadPool {
-		private int pool_depth;
-		public Collection<Thread> pool;
-				
-		public ThreadPool() {
-			pool_depth = 10;
-			pool = new Collection<Thread>();
-		}
-		
-		public int PoolDepth {
-			set {
-				if (value < 1)
-					pool_depth = 1;
-				else if (value > 50)
-					pool_depth = 50;
-				else
-					pool_depth = value;
-			}
-			get {
-				return pool_depth;
-			}
-		}
-		
-		public void StartAll(ThreadStart st) {
-			for (int i = 0; i < pool_depth; i++) {
-				Thread t = new Thread(st);
-				t.Start();
-				Add(t);
-			}
-		}
-		
-		private void Add(Thread t) {
-			pool.Add(t);
-		}
-		
-		public void JoinAll() {
-			foreach(Thread t in pool) {
-				t.Join(1000);
-				Console.Write(".");
-			}
-			Console.WriteLine(".");
 		}
 	}
 	
