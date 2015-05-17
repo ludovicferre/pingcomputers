@@ -1,11 +1,5 @@
 using System;
-using System.Collections.ObjectModel;
-using System.Collections;
-using System.ServiceProcess;
-using System.Text;
 using System.Data;
-using System.Threading;
-using System.Net.NetworkInformation;
 using Altiris.NS.Logging;
 using Altiris.NS.Security;
 using Symantec.CWoC.APIWrappers;
@@ -44,7 +38,7 @@ SELECT i.fqdn, c.Guid
 
 				// Create a thread pool to run the ping task
 				ThreadPool pinger_thread_pool = new ThreadPool();
-				Thread pinger_status_thread = new Thread(new ThreadStart(pinger.PrintStatus));
+				System.Threading.Thread pinger_status_thread = new System.Threading.Thread(new System.Threading.ThreadStart(pinger.PrintStatus));
 				pinger_thread_pool.PoolDepth = pinger.HostQueue.Count / 10;
 				pinger.ThreadPoolDepth = pinger_thread_pool.PoolDepth;
 
@@ -75,7 +69,7 @@ SELECT i.fqdn, c.Guid
 				}
 
 				ThreadPool sc_thread_pool = new ThreadPool();
-				Thread sc_status_thread = new Thread(new ThreadStart(sc.PrintStatus));
+				System.Threading.Thread sc_status_thread = new System.Threading.Thread(new System.Threading.ThreadStart(sc.PrintStatus));
 				sc_thread_pool.PoolDepth = sc.HostQueue.Count / 5;
 				sc.ThreadPoolDepth = sc_thread_pool.PoolDepth;
 
@@ -126,37 +120,5 @@ SELECT i.fqdn, c.Guid
 			status = _status;
 		}
 	}
-
-    class Timer {
-        private System.Diagnostics.Stopwatch chrono;
-		public string duration {
-			get {
-				return chrono.ElapsedMilliseconds.ToString();
-			}
-		}
-		
-		public string tickcount {
-			get {
-				return chrono.ElapsedTicks.ToString();
-			}
-		}
-		
-		public Timer() {
-			init();
-		}
-
-        public void init() {
-            chrono = new System.Diagnostics.Stopwatch();
-            chrono.Start();
-        }
-
-        public void start() {
-            chrono.Start();
-        }
-
-        public void stop() {
-            chrono.Stop();
-        }
-    }
 	
 }

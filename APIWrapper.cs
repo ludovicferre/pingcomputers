@@ -113,4 +113,36 @@ namespace Symantec.CWoC.APIWrappers {
             EventLog.ReportVerbose(msg);
         }
 	}
+
+    class Timer {
+        private System.Diagnostics.Stopwatch chrono;
+		public string duration {
+			get {
+				return chrono.ElapsedMilliseconds.ToString();
+			}
+		}
+		
+		public string tickcount {
+			get {
+				return chrono.ElapsedTicks.ToString();
+			}
+		}
+		
+		public Timer() {
+			init();
+		}
+
+        public void init() {
+            chrono = new System.Diagnostics.Stopwatch();
+            chrono.Start();
+        }
+
+        public void start() {
+            chrono.Start();
+        }
+
+        public void stop() {
+            chrono.Stop();
+        }
+    }
 }
