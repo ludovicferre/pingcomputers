@@ -1,18 +1,10 @@
 using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Data;
 using System.Data.SqlClient;
 
-using Altiris.Common;
-using Altiris.Database;
-using Altiris.Database.DataAccessLayer;
-using Altiris.NS;
-using Altiris.NS.ItemManagement;
 using Altiris.NS.Logging;
 using Altiris.NS.ContextManagement;
 using Altiris.NS.Security;
-using Altiris.Resource;
 
 namespace Symantec.CWoC {
     class SecurityAPI {
@@ -46,7 +38,6 @@ namespace Symantec.CWoC {
         public static DataTable GetTable(string sqlStatement) {
             DataTable t = new DataTable();
             try {
-				// Console.WriteLine("Running SQL query:\n{0}\n", sqlStatement);
                 using (DatabaseContext context = DatabaseContext.GetContext()) {
                     SqlCommand cmdAllResources = context.CreateCommand() as SqlCommand;
                     cmdAllResources.CommandText = sqlStatement;
@@ -55,11 +46,10 @@ namespace Symantec.CWoC {
                         t.Load(r);
                     }
                 }
-				// Console.WriteLine("!!! Returning {0} rows to caller...", t.Rows.Count);
                 return t;
             }
             catch (Exception e) {
-                Logger.LogEx(e);
+                EventLog.ReportError(String.Format("Error: {0}\nException message = {1}\nStack trace = {2}.\nsqlStatement = {3}", e.Message, e.InnerException, e.StackTrace, sqlStatement));
                 throw new Exception("Failed to execute SQL command...");
             }
         }
@@ -73,7 +63,7 @@ namespace Symantec.CWoC {
                     return sql_cmd.ExecuteNonQuery();
                 }
             } catch (Exception e) {
-                Logger.LogEx(e);
+                EventLog.ReportError(String.Format("Error: {0}\nException message = {1}\nStack trace = {2}.\nsqlStatement = {3}", e.Message, e.InnerException, e.StackTrace, sqlStatement));
                 throw new Exception("Failed to execute non query SQL command...");
             }
 
@@ -90,31 +80,13 @@ namespace Symantec.CWoC {
                     return Convert.ToInt32(result);
                 }
             } catch (Exception e) {
-                Console.WriteLine("Error: {0}\nException message = {1}\nStack trace = {2}.", e.Message, e.InnerException, e.StackTrace);
-                throw new Exception("Failed to execute scalar SQL command...");
+                EventLog.ReportError(String.Format("Error: {0}\nException message = {1}\nStack trace = {2}.\nsqlStatement = {3}", e.Message, e.InnerException, e.StackTrace, sqlStatement));
+                throw new Exception("Failed to execute scalar SQL command.");
             }
         }
     }
 
-    class Logger {
-        public static void LogEx(Exception e) {
-            string msg = string.Format("Caught exception {0}\nInnerException={1}\nStackTrace={2}", e.Message, e.InnerException, e.StackTrace);
-            Console.WriteLine(msg);
-            EventLog.ReportError(msg);
-        }
-
-        public static void Log(string msg) {
-            Console.WriteLine(msg);
-            EventLog.ReportInfo(msg);
-        }
-
-        public static void LogVerbose(string msg) {
-            Console.WriteLine(msg);
-            EventLog.ReportVerbose(msg);
-        }
-	}
-
-    class Timer {
+    class QTimer {
         private System.Diagnostics.Stopwatch chrono;
 		public string duration {
 			get {
@@ -128,7 +100,7 @@ namespace Symantec.CWoC {
 			}
 		}
 		
-		public Timer() {
+		public QTimer() {
 			init();
 		}
 

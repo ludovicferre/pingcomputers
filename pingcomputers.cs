@@ -1,5 +1,7 @@
 using System;
 using System.Data;
+using System.Threading;
+
 using Altiris.NS.Logging;
 using Altiris.NS.Security;
 
@@ -24,7 +26,7 @@ SELECT i.fqdn, c.Guid
 
 		public static void Main() {
 			try {
-				Timer main_timer = new Timer();
+				QTimer main_timer = new QTimer();
 				SecurityContextManager.SetContextData();
 				DataTable computers = DatabaseAPI.GetTable(sql);
 				
@@ -37,13 +39,13 @@ SELECT i.fqdn, c.Guid
 
 				// Create a thread pool to run the ping task
 				ThreadPool pinger_thread_pool = new ThreadPool();
-				System.Threading.Thread pinger_status_thread = new System.Threading.Thread(new System.Threading.ThreadStart(pinger.PrintStatus));
+				Thread pinger_status_thread = new Thread(new ThreadStart(pinger.PrintStatus));
 				pinger_thread_pool.PoolDepth = pinger.HostQueue.Count / 10;
 				pinger.ThreadPoolDepth = pinger_thread_pool.PoolDepth;
 
 				pinger_status_thread.Start();
 				
-				Timer ping_timer = new Timer();
+				QTimer ping_timer = new QTimer();
 				pinger_thread_pool.StartAll(pinger.RunPing);
 				pinger_status_thread.Join();
 				
@@ -68,13 +70,13 @@ SELECT i.fqdn, c.Guid
 				}
 
 				ThreadPool sc_thread_pool = new ThreadPool();
-				System.Threading.Thread sc_status_thread = new System.Threading.Thread(new System.Threading.ThreadStart(sc.PrintStatus));
+				Thread sc_status_thread = new Thread(new ThreadStart(sc.PrintStatus));
 				sc_thread_pool.PoolDepth = sc.HostQueue.Count / 5;
 				sc.ThreadPoolDepth = sc_thread_pool.PoolDepth;
 
 				sc_status_thread.Start();
 
-				Timer sc_timer = new Timer();
+				QTimer sc_timer = new QTimer();
 				sc_thread_pool.StartAll(sc.RunCheck);
 				sc_status_thread.Join();
 				Console.WriteLine("Done processing service control requests (we had {0} entries) in {1} ms...", sc.ResultQueue.Count.ToString(), sc_timer.duration);
