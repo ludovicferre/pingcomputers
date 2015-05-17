@@ -2,7 +2,6 @@ using System;
 using System.Data;
 using Altiris.NS.Logging;
 using Altiris.NS.Security;
-using Symantec.CWoC.APIWrappers;
 
 namespace Symantec.CWoC {
     class PingComputers {
@@ -92,18 +91,5 @@ SELECT i.fqdn, c.Guid
 			}
 			Console.WriteLine("Waiting for thread and process tear down...");
 		}
-    }
-	
-	class TestResult : HostData {
-		public string status;
-		
-		public TestResult() {
-			status = "";
-		}
-		
-		public TestResult(string _status) {
-			status = _status;
-		}
-	}
-	
+    }	
 }

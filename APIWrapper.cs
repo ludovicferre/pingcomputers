@@ -14,7 +14,7 @@ using Altiris.NS.ContextManagement;
 using Altiris.NS.Security;
 using Altiris.Resource;
 
-namespace Symantec.CWoC.APIWrappers {
+namespace Symantec.CWoC {
     class SecurityAPI {
         public static bool is_user_admin() {
             bool is_altiris_admin = false;

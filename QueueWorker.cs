@@ -3,7 +3,6 @@ using System.Collections;
 using System.Data;
 using System.Threading;
 using Altiris.NS.Logging;
-using Symantec.CWoC.APIWrappers;
 
 namespace Symantec.CWoC {
 	class QueueWorker {
