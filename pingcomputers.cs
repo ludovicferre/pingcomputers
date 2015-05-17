@@ -24,7 +24,21 @@ SELECT i.fqdn, c.Guid
    AND dt.LatestInventoryDate < getdate() - 7
 ";
 
-		public static void Main() {
+		public static int Main() {
+			// Handle command line arguments here
+			
+			// Run the tool
+			QTimer main_timer = new QTimer();
+			int rc = RunTool();
+			main_timer.stop();
+			
+			Console.WriteLine("Processing completed in {0} ms.", main_timer.duration);
+
+			return rc;
+		}
+		
+		public static int RunTool () {
+			int rc = 0;
 			try {
 				QTimer main_timer = new QTimer();
 				SecurityContextManager.SetContextData();
@@ -55,7 +69,7 @@ SELECT i.fqdn, c.Guid
 				Console.WriteLine("Thread convergence took {0} ms.", ping_timer.duration);
 
 				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", pinger.ResultQueue.Count.ToString());
-			
+
 				// Move to stage 2: check the Altiris Agent status if possible
 				ServiceChecker sc = new ServiceChecker();
 				TestResult result = new TestResult();
@@ -88,10 +102,13 @@ SELECT i.fqdn, c.Guid
 					, sc_thread_pool.PoolDepth.ToString()
 					, computers.Rows.Count.ToString()
 					);
+				rc = 0;
 			} catch (Exception e) {
 				EventLog.ReportError(String.Format("{0}\n{1}", e.Message, e.InnerException));
+				rc = -1;
 			}
-			Console.WriteLine("Waiting for thread and process tear down...");
+			Console.WriteLine("Waiting for thread and process tear down...");		
+			return rc;
 		}
     }	
 }
