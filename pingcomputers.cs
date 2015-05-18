@@ -24,20 +24,30 @@ SELECT i.fqdn, c.Guid
    AND dt.LatestInventoryDate < getdate() - 7
 ";
 
+		private static int set_rowcount;
+		private static bool ping_only;
+
 		public static int Main(string [] args) {
 			// Handle command line arguments here
 			
-			int set_rowcount = 0;
+			set_rowcount = 0;
+			ping_only = false;
+
 			if (args.Length > 0) {
 				foreach (string arg in args) {
-					if (arg == "/test")
-						set_rowcount = 500;					
+					if (arg == "/test") {
+						set_rowcount = 500;
+						continue;
+					}
+					if (arg == "/pingonly") {
+						ping_only = true;
+					}
 				}
 			}
 			
 			// Run the tool
 			QTimer main_timer = new QTimer();
-			int rc = RunTool(set_rowcount);
+			int rc = RunTool();
 			main_timer.stop();
 			
 			Console.WriteLine("Processing completed in {0} ms.", main_timer.duration);
@@ -45,7 +55,7 @@ SELECT i.fqdn, c.Guid
 			return rc;
 		}
 		
-		public static int RunTool (int set_rowcount) {
+		public static int RunTool () {
 			int rc = 0;
 			try {
 				QTimer main_timer = new QTimer();
@@ -82,39 +92,41 @@ SELECT i.fqdn, c.Guid
 
 				Console.WriteLine("\n\rDequeueing results (we have {0} entries)...", pinger.ResultQueue.Count.ToString());
 
-				// Move to stage 2: check the Altiris Agent status if possible
-				ServiceChecker sc = new ServiceChecker();
-				sc.SetExecId(_exec_id);
-				TestResult result = new TestResult();
-				HostData hostdata = new HostData();
+				if (!ping_only) {
+					// Move to stage 2: check the Altiris Agent status if possible
+					ServiceChecker sc = new ServiceChecker();
+					sc.SetExecId(_exec_id);
+					TestResult result = new TestResult();
+					HostData hostdata = new HostData();
 
-				while (pinger.ResultQueue.Count > 0) {
-					result = (TestResult) pinger.ResultQueue.Dequeue();
-					if (result.status == "1") {
-						hostdata = new HostData(result.host_name, result.host_guid);
-						sc.HostQueue.Enqueue(hostdata);
+					while (pinger.ResultQueue.Count > 0) {
+						result = (TestResult) pinger.ResultQueue.Dequeue();
+						if (result.status == "1") {
+							hostdata = new HostData(result.host_name, result.host_guid);
+							sc.HostQueue.Enqueue(hostdata);
+						}
 					}
-				}
 
-				ThreadPool sc_thread_pool = new ThreadPool();
-				Thread sc_status_thread = new Thread(new ThreadStart(sc.PrintStatus));
-				sc_thread_pool.PoolDepth = sc.HostQueue.Count / 5;
-				sc.ThreadPoolDepth = sc_thread_pool.PoolDepth;
+					ThreadPool sc_thread_pool = new ThreadPool();
+					Thread sc_status_thread = new Thread(new ThreadStart(sc.PrintStatus));
+					sc_thread_pool.PoolDepth = sc.HostQueue.Count / 5;
+					sc.ThreadPoolDepth = sc_thread_pool.PoolDepth;
 
-				sc_status_thread.Start();
+					sc_status_thread.Start();
 
-				QTimer sc_timer = new QTimer();
-				sc_thread_pool.StartAll(sc.RunCheck);
-				sc_status_thread.Join();
-				Console.WriteLine("Done processing service control requests (we had {0} entries) in {1} ms...", sc.ResultQueue.Count.ToString(), sc_timer.duration);
-				sc_thread_pool.JoinAll();
-				
-				Console.WriteLine("Processing of {3} entries completed in {0} ms, using {1} threads for ping and {2} threads for service control checks."
-					, main_timer.duration
-					, pinger_thread_pool.PoolDepth.ToString()
-					, sc_thread_pool.PoolDepth.ToString()
-					, computers.Rows.Count.ToString()
-					);
+					QTimer sc_timer = new QTimer();
+					sc_thread_pool.StartAll(sc.RunCheck);
+					sc_status_thread.Join();
+					Console.WriteLine("Done processing service control requests (we had {0} entries) in {1} ms...", sc.ResultQueue.Count.ToString(), sc_timer.duration);
+					sc_thread_pool.JoinAll();
+					
+					Console.WriteLine("Processing of {3} entries completed in {0} ms, using {1} threads for ping and {2} threads for service control checks."
+						, main_timer.duration
+						, pinger_thread_pool.PoolDepth.ToString()
+						, sc_thread_pool.PoolDepth.ToString()
+						, computers.Rows.Count.ToString()
+						);
+					}
 				rc = 0;
 			} catch (Exception e) {
 				EventLog.ReportError(String.Format("{0}\n{1}", e.Message, e.InnerException));
