@@ -26,12 +26,6 @@ namespace Symantec.CWoC {
 				DatabaseReady = false;
 			
 			currentExecId = 0;
-			if (DatabaseReady)
-				currentExecId = GetExecId();
-
-			// If we can't get a valid exec id do _not_ use the DB store
-			if (currentExecId == -1)
-				DatabaseReady = false;			
 
 			ThreadPoolDepth = 0;
 			baseResultQueue = new Queue();
@@ -71,7 +65,8 @@ namespace Symantec.CWoC {
 
 		public void RecordEvent(TestResult result, string event_type) {
 			result.status = result.status.Replace("'", "\"");
-			string sql = String.Format("insert CWoC_Pinger_Event(timestamp, resourceguid, hostname, eventtype, [status]) values (getdate(), '{0}', '{1}', '{2}', '{3}')"
+			string sql = String.Format("insert CWoC_Pinger_Event(_exec_id, timestamp, resourceguid, hostname, eventtype, [status]) values ('{0}', getdate(), '{1}', '{2}', '{3}', '{4}')"
+							, currentExecId
 							, result.host_guid
 							, result.host_name
 							, event_type
@@ -90,7 +85,7 @@ namespace Symantec.CWoC {
 		}
 
 		public int GetExecId() {
-			string sql = @"select max(_exec_id) + 1 from CWoC_Pinger_Event";
+			string sql = @"select isnull(max(_exec_id), -1) + 1 from CWoC_Pinger_Event";
 			try {
 				return DatabaseAPI.ExecuteScalar(sql);
 			} catch (Exception e) {
@@ -99,7 +94,10 @@ namespace Symantec.CWoC {
 				EventLog.ReportError(msg);
 				return -1;
 			}
-
+		}
+		
+		public void SetExecId(int _exec_id) {
+			currentExecId = _exec_id;
 		}
 		
 		private int CreateTable () {

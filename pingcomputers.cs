@@ -9,7 +9,7 @@ namespace Symantec.CWoC {
     class PingComputers {
 	
 		public static readonly string sql = @"
-set rowcount 0
+set rowcount {0}
 SELECT i.fqdn, c.Guid
   FROM [vComputerResource] c
  INNER JOIN (
@@ -24,12 +24,20 @@ SELECT i.fqdn, c.Guid
    AND dt.LatestInventoryDate < getdate() - 7
 ";
 
-		public static int Main() {
+		public static int Main(string [] args) {
 			// Handle command line arguments here
+			
+			int set_rowcount = 0;
+			if (args.Length > 0) {
+				foreach (string arg in args) {
+					if (arg == "/test")
+						set_rowcount = 500;					
+				}
+			}
 			
 			// Run the tool
 			QTimer main_timer = new QTimer();
-			int rc = RunTool();
+			int rc = RunTool(set_rowcount);
 			main_timer.stop();
 			
 			Console.WriteLine("Processing completed in {0} ms.", main_timer.duration);
@@ -37,14 +45,18 @@ SELECT i.fqdn, c.Guid
 			return rc;
 		}
 		
-		public static int RunTool () {
+		public static int RunTool (int set_rowcount) {
 			int rc = 0;
 			try {
 				QTimer main_timer = new QTimer();
 				SecurityContextManager.SetContextData();
-				DataTable computers = DatabaseAPI.GetTable(sql);
+				
+				string host_list_sql = String.Format(sql, set_rowcount); 
+				DataTable computers = DatabaseAPI.GetTable(host_list_sql);
 				
 				Pinger pinger = new Pinger();
+				int _exec_id = pinger.GetExecId();
+				pinger.SetExecId(_exec_id);
 				
 				foreach (DataRow r in computers.Rows) {
 					HostData d = new HostData(r[0].ToString(), r[1].ToString());
@@ -72,6 +84,7 @@ SELECT i.fqdn, c.Guid
 
 				// Move to stage 2: check the Altiris Agent status if possible
 				ServiceChecker sc = new ServiceChecker();
+				sc.SetExecId(_exec_id);
 				TestResult result = new TestResult();
 				HostData hostdata = new HostData();
 
