@@ -21,10 +21,11 @@ SELECT i.fqdn, c.Guid
   LEFT JOIN Inv_AeX_AC_IDentification i
     ON c.Guid = i._ResourceGuid
  WHERE c.IsManaged = 1 
-   AND dt.LatestInventoryDate < getdate() - 7
+   AND dt.LatestInventoryDate < getdate() - {1}
 ";
 
 		private static int set_rowcount;
+		private static int days_inactive;
 		private static bool ping_only;
 
 		public static int Main(string [] args) {
@@ -32,15 +33,26 @@ SELECT i.fqdn, c.Guid
 			
 			set_rowcount = 0;
 			ping_only = false;
+			days_inactive = 7;
 
 			if (args.Length > 0) {
 				foreach (string arg in args) {
-					if (arg == "/test") {
+					string _arg = arg.ToLower();
+					if (_arg == "/test") {
 						set_rowcount = 500;
 						continue;
 					}
-					if (arg == "/pingonly") {
+					if (_arg == "/pingonly") {
 						ping_only = true;
+						continue;
+					}
+					if (_arg.StartsWith("/days=")) {
+						string days = _arg.Replace("/days=", "");
+						try {
+							days_inactive = Convert.ToInt32(days);
+						} catch {
+						}
+						continue;
 					}
 				}
 			}
@@ -61,7 +73,7 @@ SELECT i.fqdn, c.Guid
 				QTimer main_timer = new QTimer();
 				SecurityContextManager.SetContextData();
 				
-				string host_list_sql = String.Format(sql, set_rowcount); 
+				string host_list_sql = String.Format(sql, set_rowcount, days_inactive); 
 				DataTable computers = DatabaseAPI.GetTable(host_list_sql);
 				
 				Pinger pinger = new Pinger();
@@ -73,6 +85,8 @@ SELECT i.fqdn, c.Guid
 					pinger.HostQueue.Enqueue(d);
 				}
 
+				if (pinger.HostQueue.Count == 0)
+					return 0;
 				// Create a thread pool to run the ping task
 				ThreadPool pinger_thread_pool = new ThreadPool();
 				Thread pinger_status_thread = new Thread(new ThreadStart(pinger.PrintStatus));
