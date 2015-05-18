@@ -13,6 +13,7 @@ namespace Symantec.CWoC {
 	
 		public int ThreadPoolDepth;
 		public bool DatabaseReady;
+		public int currentExecId;
 
 		public QueueWorker(){
 			init();
@@ -23,6 +24,14 @@ namespace Symantec.CWoC {
 				DatabaseReady = true;
 			else
 				DatabaseReady = false;
+			
+			currentExecId = 0;
+			if (DatabaseReady)
+				currentExecId = GetExecId();
+
+			// If we can't get a valid exec id do _not_ use the DB store
+			if (currentExecId == -1)
+				DatabaseReady = false;			
 
 			ThreadPoolDepth = 0;
 			baseResultQueue = new Queue();
@@ -79,16 +88,30 @@ namespace Symantec.CWoC {
 			}
 			Altiris.NS.Logging.EventLog.ReportVerbose(sql);
 		}
+
+		public int GetExecId() {
+			string sql = @"select max(_exec_id) + 1 from CWoC_Pinger_Event";
+			try {
+				return DatabaseAPI.ExecuteScalar(sql);
+			} catch (Exception e) {
+	            string msg = string.Format("Caught exception {0}\nInnerException={1}\nStackTrace={2}", e.Message, e.InnerException, e.StackTrace);
+				Console.WriteLine(msg);
+				EventLog.ReportError(msg);
+				return -1;
+			}
+
+		}
 		
 		private int CreateTable () {
 			string sql = @"
 if not exists (select 1 from sys.objects where type = 'u' and name = 'CWoC_Pinger_Event')
 begin
 	create table CWoC_Pinger_Event (
-		[timestamp] datetime,
-		[resourceguid] uniqueidentifier,
-		[hostname] nvarchar(255),
-		[eventtype] nvarchar(255),
+		[_exec_id] int not null,
+		[timestamp] datetime not null,
+		[resourceguid] uniqueidentifier not null,
+		[hostname] nvarchar(255) not null,
+		[eventtype] nvarchar(255) not null,
 		[status] nvarchar(max)
 	)
 
@@ -98,6 +121,12 @@ begin
 		[resourceguid] ASC,
 		[timestamp] ASC
 	)WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, SORT_IN_TEMPDB = OFF, IGNORE_DUP_KEY = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
+
+	CREATE NONCLUSTERED INDEX [CWoC_Pinger_Event_ExecId] ON [dbo].[CWoC_Pinger_Event] 
+	(
+		[_exec_id] ASC
+	)WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, SORT_IN_TEMPDB = OFF, IGNORE_DUP_KEY = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
+	
 end
 ";
 			try {

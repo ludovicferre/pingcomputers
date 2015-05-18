@@ -22,7 +22,7 @@ namespace Symantec.CWoC {
 					testresult.host_guid = hostdata.host_guid;
 					ServiceController sc = new ServiceController(service_name, hostdata.host_name);
 					if (sc.Status == ServiceControllerStatus.Stopped) {
-						// Start the service if it is stopped.
+						StoreResult(testresult, "service_status_stopped");
 						int i = 0;
 						while (i < 5) {
 							sc.Start();
@@ -31,20 +31,20 @@ namespace Symantec.CWoC {
 							if (sc.Status == ServiceControllerStatus.Running)
 								break;
 							testresult.status = sc.Status.ToString();
-							StoreResult(testresult, "service_check");
+							StoreResult(testresult, "service_start");
 						}
 						if (i > 4) {
 							string status = String.Format("Failed to start the Altiris Agent service {0} times...", (i + 1).ToString());
 							testresult.status = status;
-							StoreResult(testresult, "service_check");
+							StoreResult(testresult, "service_start_failure");
 						}
 					} else {
 						testresult.status = sc.Status.ToString();
-						StoreResult(testresult, "service_check");
+						StoreResult(testresult, "service_status_started");
 					}
 				} catch (Exception e) {
 					testresult.status = e.Message;
-					StoreResult(testresult, "service_check");
+					StoreResult(testresult, "service_check_exception");
 				}
 			}
 		}

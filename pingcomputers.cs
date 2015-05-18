@@ -9,7 +9,7 @@ namespace Symantec.CWoC {
     class PingComputers {
 	
 		public static readonly string sql = @"
-set rowcount 500
+set rowcount 0
 SELECT i.fqdn, c.Guid
   FROM [vComputerResource] c
  INNER JOIN (
