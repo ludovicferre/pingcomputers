@@ -8,7 +8,7 @@ using Altiris.NS.Security;
 namespace Symantec.CWoC {
     class PingComputers {
 	
-		public static readonly string sql = @"
+		private static readonly string sql = @"
 set rowcount {0}
 SELECT i.fqdn, c.Guid
   FROM [vComputerResource] c
@@ -24,6 +24,48 @@ SELECT i.fqdn, c.Guid
    AND dt.LatestInventoryDate < getdate() - {1}
 ";
 
+		private static string VERSION_MESSAGE = "Welcome to CWoC pinger Version 4.";
+
+		private static string HELP_MESSAGE = "\n" + VERSION_MESSAGE + @". 
+
+This tool retrieves the inactive computers for 7 days from the Symantec CMDB
+and checks for each computer whether it is accessible from the network via ICMP
+echo request messages (ping).
+
+If a computer is responding to ping, we use a Windows Service Control network 
+call to verify the state of the Altiris Agent service. If the service is found
+in a Stopped state it is started, else it is left as-is.
+
+Each test result (ping or service control) is logged into the database on the 
+'CWoC_pinger_event' table, as well as any exceptions (normally failures to 
+resolve a hostname, or to access the remote host service control manager).
+
+Here are the currently supported command line arguments:
+
+    /pingonly
+    
+        This command line prevent the tool from running the service control
+        check on inactive computers.
+    
+    /days=<n>
+
+        Specify the number of inactive days threshold. By default the value used
+        is 7, but if you want to have more aggressive view of the estate you can
+        use a lower value, or if you want to restrain the result set you can 
+        extend the value to 14, 21 or any number of days that suit your needs.
+    
+    /test
+    
+        Limit the count of computers to no more than 500.
+    
+    /version
+    
+        Display the version message.
+    
+    /help || /?
+    
+        Display this message.
+";		
 		private static int set_rowcount;
 		private static int days_inactive;
 		private static bool ping_only;
@@ -50,10 +92,20 @@ SELECT i.fqdn, c.Guid
 						string days = _arg.Replace("/days=", "");
 						try {
 							days_inactive = Convert.ToInt32(days);
-						} catch {
-						}
+						} catch { }
 						continue;
 					}
+					if (_arg == "/?" || _arg == "/help") {
+						Console.WriteLine(HELP_MESSAGE);
+						return 0;
+					}
+					if (_arg == "/version") {
+						Console.WriteLine(VERSION_MESSAGE);
+						return 0;
+					}
+					// Invalid command line args result in help message printout
+					Console.WriteLine(HELP_MESSAGE);
+					return -1;
 				}
 			}
 			
