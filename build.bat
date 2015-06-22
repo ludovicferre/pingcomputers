@@ -8,6 +8,7 @@ set ars=Altiris.Resource
 
 
 if "%1"=="7.6" goto build-7.6
+if "%1"=="7.1" goto build-7.1
 if "%1"=="2.0" goto build-2.0
 
 :default build path
@@ -31,6 +32,21 @@ set csc=@c:\Windows\Microsoft.NET\Framework\v2.0.50727\csc.exe
 cmd /c %csc% /out:pinger-%build%.exe pingcomputers.cs
 
 goto end
+
+
+:build-7.1
+set build=7.1
+
+set gac=C:\Windows\Assembly\GAC_MSIL
+set csc=@c:\Windows\Microsoft.NET\Framework\v2.0.50727\csc.exe
+
+set ver1=7.1.8400.0__d516cb311cfb6e4f
+set ver2=7.5.3219.0__d516cb311cfb6e4f
+set ver3=7.5.3153.0__99b1e4cc0d03f223
+
+
+goto build
+
 
 :build-7.6
 set build=7.6
